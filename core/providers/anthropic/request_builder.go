@@ -176,6 +176,11 @@ func BuildAnthropicResponsesRequestBody(ctx *schemas.BifrostContext, request *sc
 			return nil, newErr(schemas.ErrProviderRequestMarshal, err, jsonBody)
 		}
 
+		jsonBody, err = StripEmptyThinkingBlocks(jsonBody)
+		if err != nil {
+			return nil, providerUtils.NewBifrostOperationError(schemas.ErrProviderRequestMarshal, err)
+		}
+
 		if cfg.RemapToolVersions {
 			jsonBody, err = RemapRawToolVersionsForProvider(jsonBody, cfg.Provider)
 			if err != nil {
