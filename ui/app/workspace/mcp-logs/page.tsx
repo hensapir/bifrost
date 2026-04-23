@@ -123,27 +123,6 @@ export default function MCPLogsPage() {
 		};
 	}, [urlState.period, urlState.start_time, urlState.end_time, setUrlState, polling]);
 
-	// Refresh the time window every 5s while live polling is on and a relative period is active.
-	// Updating start_time/end_time changes RTK args → triggers a refetch without needing pollingInterval.
-	useEffect(() => {
-		if (!polling || !urlState.period) return;
-
-		const id = setInterval(() => {
-			if (document.hidden) return;
-			const { from, to } = getRangeForPeriod(urlState.period);
-			setUrlState(
-				{
-					start_time: Math.floor(from.getTime() / 1000),
-					end_time: Math.floor(to.getTime() / 1000),
-					period: urlState.period ?? "",
-				},
-				{ history: "replace" },
-			);
-		}, 5000);
-
-		return () => clearInterval(id);
-	}, [polling, urlState.period, setUrlState]);
-
 	// Convert URL state to filters and pagination for API calls
 	const filters: MCPToolLogFilters = useMemo(
 		() => ({
@@ -177,7 +156,6 @@ export default function MCPLogsPage() {
 		[urlState.limit, urlState.offset, urlState.sort_by, urlState.order],
 	);
 
-	// Non-lazy RTK Query hooks
 	const {
 		data: logsData,
 		isLoading: logsIsLoading,
@@ -187,9 +165,7 @@ export default function MCPLogsPage() {
 	} = useGetMCPLogsQuery(
 		{ filters, pagination },
 		{
-			// When a relative period is active, the setInterval above updates URL timestamps → RTK
-			// detects arg changes and refetches automatically; no separate pollingInterval needed.
-			pollingInterval: showEmptyState ? 3000 : polling && !urlState.period ? 5000 : 0,
+			pollingInterval: showEmptyState || polling ? 5000 : 0,
 			refetchOnMountOrArgChange: true,
 			skipPollingIfUnfocused: true,
 		},
@@ -199,7 +175,14 @@ export default function MCPLogsPage() {
 		data: statsData,
 		isFetching: statsIsFetching,
 		refetch: refetchStats,
-	} = useGetMCPLogsStatsQuery({ filters }, { refetchOnMountOrArgChange: true });
+	} = useGetMCPLogsStatsQuery(
+		{ filters },
+		{
+			pollingInterval: polling ? 5000 : 0,
+			refetchOnMountOrArgChange: true,
+			skipPollingIfUnfocused: true,
+		},
+	);
 
 	const refreshAllData = useCallback(() => {
 		refetchLogs();

@@ -6,7 +6,6 @@ import { LogsHeaderView } from "@/app/workspace/logs/views/logsHeaderView";
 import { LogsDataTable } from "@/app/workspace/logs/views/logsTable";
 import { LogsVolumeChart } from "@/app/workspace/logs/views/logsVolumeChart";
 import { LogsFilterSidebar } from "@/components/filters/logsFilterSidebar";
-import FullPageLoader from "@/components/fullPageLoader";
 import { useColumnConfig } from "@/components/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent } from "@/components/ui/card";
@@ -171,27 +170,6 @@ export default function LogsPage() {
 		};
 	}, [urlState.period, urlState.start_time, urlState.end_time, setUrlState, polling]);
 
-	// Refresh the time window every 5s while live polling is on and a relative period is active.
-	// Updating start_time/end_time changes RTK args → triggers a refetch without needing pollingInterval.
-	useEffect(() => {
-		if (!polling || !urlState.period) return;
-
-		const id = setInterval(() => {
-			if (document.hidden) return;
-			const { from, to } = getRangeForPeriod(urlState.period);
-			setUrlState(
-				{
-					start_time: Math.floor(from.getTime() / 1000),
-					end_time: Math.floor(to.getTime() / 1000),
-					period: urlState.period ?? "",
-				},
-				{ history: "replace" },
-			);
-		}, 5000);
-
-		return () => clearInterval(id);
-	}, [polling, urlState.period, setUrlState]);
-
 	// Convert URL state to filters and pagination for API calls
 	const filters: LogFilters = useMemo(
 		() => ({
@@ -342,9 +320,6 @@ export default function LogsPage() {
 		return currentRange < defaultRange * 0.9;
 	}, [urlState.start_time, urlState.end_time]);
 
-	// Non-lazy RTK Query hooks — RTK handles caching, deduplication, and loading states.
-	// pollingInterval is only set for the no-period case; period polling is handled by
-	// a setInterval that updates URL timestamps, which changes args and triggers RTK to refetch.
 	const {
 		data: logsData,
 		isLoading: logsIsLoading,
@@ -354,10 +329,7 @@ export default function LogsPage() {
 	} = useGetLogsQuery(
 		{ filters, pagination },
 		{
-			// Poll every 5s on the empty state page so we transition as soon as the first log arrives.
-			// When a relative period is active, the setInterval above updates URL timestamps → RTK
-			// detects arg changes and refetches automatically; no separate pollingInterval needed.
-			pollingInterval: showEmptyState ? 5000 : polling && !period ? 5000 : 0,
+			pollingInterval: showEmptyState || polling ? 5000 : 0,
 			refetchOnMountOrArgChange: true,
 			skipPollingIfUnfocused: true,
 		},
@@ -370,7 +342,7 @@ export default function LogsPage() {
 	} = useGetLogsStatsQuery(
 		{ filters },
 		{
-			pollingInterval: polling && !period ? 5000 : 0,
+			pollingInterval: polling ? 5000 : 0,
 			refetchOnMountOrArgChange: true,
 			skipPollingIfUnfocused: true,
 		},
@@ -383,7 +355,7 @@ export default function LogsPage() {
 	} = useGetLogsHistogramQuery(
 		{ filters },
 		{
-			pollingInterval: polling && !period ? 5000 : 0,
+			pollingInterval: polling ? 5000 : 0,
 			refetchOnMountOrArgChange: true,
 			skipPollingIfUnfocused: true,
 		},
@@ -663,9 +635,7 @@ export default function LogsPage() {
 
 	return (
 		<div className="dark:bg-card no-padding-parent no-border-parent h-[calc(100vh_-_16px)]">
-			{logsIsLoading ? (
-				<FullPageLoader />
-			) : showEmptyState ? (
+			{showEmptyState ? (
 				<EmptyState error={error ?? (logsError ? getErrorMessage(logsError as Parameters<typeof getErrorMessage>[0]) : null)} />
 			) : (
 				<div className="bg-background flex h-full w-full grow gap-3">
